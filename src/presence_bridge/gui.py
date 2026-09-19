@@ -819,20 +819,61 @@ class MainWindow(QMainWindow):
             )
             return
 
-        cp = subprocess.run(
-            ["systemctl", "--user", "restart", "discord-presence-bridge.service"],
+        service = "discord-presence-bridge.service"
+
+        subprocess.run(
+            ["systemctl", "--user", "reset-failed", service],
             text=True,
             capture_output=True,
             check=False,
         )
-        if cp.returncode == 0:
+
+        cp = subprocess.run(
+            ["systemctl", "--user", "restart", service],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        active = subprocess.run(
+            ["systemctl", "--user", "is-active", "--quiet", service],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        if cp.returncode == 0 and active.returncode == 0:
             self.status.setText("Saved and applied")
-        else:
-            QMessageBox.critical(
-                self,
-                "Could not apply settings",
-                (cp.stderr or cp.stdout or "Unknown systemctl failure").strip(),
-            )
+            return
+
+        log = subprocess.run(
+            [
+                "journalctl",
+                "--user",
+                "-u",
+                service,
+                "-n",
+                "60",
+                "--no-pager",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        reason = (cp.stderr or cp.stdout or "The background service did not stay running.").strip()
+        details = (log.stdout or log.stderr or "No service log was available.").strip()
+
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Critical)
+        box.setWindowTitle("Could not apply settings")
+        box.setText(reason)
+        box.setInformativeText(
+            "The app cleared systemd's failed/start-limit state and tried again. "
+            "Open the detailed section below for the daemon log."
+        )
+        box.setDetailedText(details)
+        box.exec()
 
     def show_logs(self):
         if os.name != "posix":
