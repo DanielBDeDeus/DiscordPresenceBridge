@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+.env
+.DS_Store
+Thumbs.db
+*.log
+.cache/
+vendor/discord_social_sdk/*
+!vendor/discord_social_sdk/README.md
