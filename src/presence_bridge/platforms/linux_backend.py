@@ -13,6 +13,7 @@ from dbus_next import Message, MessageType
 from dbus_next.aio import MessageBus
 
 from .base import ActiveWindow, MediaMetadata, PlatformBackend
+from .kwin_windows import list_kwin_taskbar_processes
 from ..models import CropRect
 
 
@@ -186,6 +187,9 @@ class LinuxPlatformBackend(PlatformBackend):
 
     def application_icon(self, process) -> Path | None:
         return _resolve_linux_app_icon(process.name, process.exe)
+
+    def taskbar_processes(self):
+        return list_kwin_taskbar_processes()
 
     def capture_fullscreen(self, destination: Path) -> Path:
         spectacle = shutil.which("spectacle")

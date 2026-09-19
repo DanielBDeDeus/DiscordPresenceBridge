@@ -15,10 +15,13 @@ class ProcessInfo:
     pid: int
     name: str
     exe: str
+    display_name: str = ""
+    window_title: str = ""
+    app_id: str = ""
 
     @property
     def display(self) -> str:
-        return f"{self.name}  [PID {self.pid}]"
+        return self.display_name or self.name
 
 
 _FIELD_CODE = re.compile(r"^%[fFuUdDnNickvm]$")

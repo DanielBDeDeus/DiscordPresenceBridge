@@ -32,6 +32,9 @@ class PlatformBackend:
     def application_icon(self, process) -> Path | None:
         return None
 
+    def taskbar_processes(self):
+        return []
+
     def capture_fullscreen(self, destination: Path) -> Path:
         raise RuntimeError("Screenshot capture is not implemented on this platform")
 

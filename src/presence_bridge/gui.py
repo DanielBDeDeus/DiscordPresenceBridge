@@ -138,8 +138,8 @@ class ProcessDialog(QDialog):
         layout.addWidget(title)
 
         subtitle = QLabel(
-            "By default, this only shows normal desktop apps so you do not have to "
-            "dig through Linux services and background processes."
+            "By default, this shows the windows KDE says belong in your taskbar. "
+            "That includes Steam games and other apps that do not have a normal launcher entry."
         )
         subtitle.setWordWrap(True)
         subtitle.setObjectName("muted")
@@ -149,8 +149,13 @@ class ProcessDialog(QDialog):
         self.filter.setPlaceholderText("Search running apps")
         layout.addWidget(self.filter)
 
+        picker_options = QHBoxLayout()
         self.show_background = QCheckBox("Show background and system processes")
-        layout.addWidget(self.show_background)
+        self.refresh_apps = QPushButton("Refresh")
+        picker_options.addWidget(self.show_background)
+        picker_options.addStretch(1)
+        picker_options.addWidget(self.refresh_apps)
+        layout.addLayout(picker_options)
 
         self.list = QListWidget()
         self.list.setSpacing(2)
@@ -168,14 +173,33 @@ class ProcessDialog(QDialog):
         layout.addWidget(buttons)
 
         self.filter.textChanged.connect(self.refresh)
-        self.show_background.stateChanged.connect(self.refresh)
+        self.show_background.stateChanged.connect(self.reload_items)
+        self.refresh_apps.clicked.connect(self.reload_items)
         self.list.itemDoubleClicked.connect(lambda _item: self.accept())
+        self._cached_items = []
+        self._using_fallback = False
+        self.reload_items()
+
+    def reload_items(self, *_):
+        self._using_fallback = False
+        if self.show_background.isChecked():
+            self._cached_items = list_processes()
+        else:
+            try:
+                self._cached_items = self.platform.taskbar_processes()
+            except Exception:
+                self._cached_items = []
+
+            if not self._cached_items:
+                # Keep the old desktop-launcher heuristic as a fallback for
+                # non-KDE desktops or a temporary KWin D-Bus failure.
+                self._cached_items = list_user_app_processes()
+                self._using_fallback = True
+
         self.refresh()
 
     def _items(self):
-        if self.show_background.isChecked():
-            return list_processes()
-        return list_user_app_processes()
+        return self._cached_items
 
     def refresh(self, *_):
         needle = self.filter.text().casefold().strip()
@@ -183,25 +207,40 @@ class ProcessDialog(QDialog):
 
         items = self._items()
         for proc in items:
-            searchable = f"{proc.name} {proc.exe}".casefold()
+            searchable = (
+                f"{proc.display} {proc.name} {proc.exe} "
+                f"{proc.window_title} {proc.app_id}"
+            ).casefold()
             if needle and needle not in searchable:
                 continue
 
-            item = QListWidgetItem(proc.name)
+            item = QListWidgetItem(proc.display)
             item.setData(Qt.UserRole, proc)
-            item.setToolTip(f"{proc.exe or 'Executable path unavailable'}\nPID {proc.pid}")
+
+            tooltip = [proc.exe or "Executable path unavailable", f"PID {proc.pid}"]
+            if proc.window_title and proc.window_title != proc.display:
+                tooltip.append(f"Window: {proc.window_title}")
+            if proc.app_id:
+                tooltip.append(f"App ID: {proc.app_id}")
+            item.setToolTip("\n".join(tooltip))
 
             self.list.addItem(item)
 
         if self.list.count():
-            self.empty.setText("")
+            if self._using_fallback and not self.show_background.isChecked():
+                self.empty.setText(
+                    "KDE taskbar detection was unavailable, so this list is using "
+                    "the launcher-based fallback."
+                )
+            else:
+                self.empty.setText("")
             self.list.setCurrentRow(0)
         elif self.show_background.isChecked():
             self.empty.setText("No running process matches your search.")
         else:
             self.empty.setText(
-                "No normal desktop app matched. Turn on “Show background and system "
-                "processes” if the app you want is unusual or portable."
+                "No taskbar app matched. Press Refresh if you just opened it, or enable "
+                "“Show background and system processes” for unusual headless apps."
             )
 
     def selected_process(self):
@@ -399,7 +438,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(row)
 
         note = QLabel(
-            "Tip: the app picker hides background Linux processes unless you ask to see them."
+            "The picker follows KDE's taskbar list, so Steam games should appear here too."
         )
         note.setObjectName("muted")
         note.setWordWrap(True)
@@ -722,10 +761,10 @@ class MainWindow(QMainWindow):
                 "Unnamed activity",
             }
             if self.current_rule.label in generic_names or self.current_rule.label.startswith("Activity "):
-                self.label.setText(proc.name)
+                self.label.setText(proc.display)
 
         if not self.activity_name.text().strip():
-            self.activity_name.setText(proc.name)
+            self.activity_name.setText(proc.display)
 
     def update_crop_label(self):
         if not self.current_rule or not self.current_rule.crop.valid:
